@@ -1,5 +1,6 @@
-# Builds YourPluginName for Windows, macOS and Linux (AAT2 template, see README).
-#  - push a tag vX.Y.Z (must match the VERSION in CMakeLists.txt):
+# Builds the two plugins of this repository (MomentNoise, AmplitudeHistogram) for Windows, macOS
+# and Linux (AAT2 template, see README); one zip per system holds both plugins.
+#  - push a tag vX.Y.Z (must match the VERSION in CMakeLists.txt and in both plugin folders):
 #    builds all platforms and creates a GitHub Release with the zips
 #  - "Run workflow" button on the Actions page: builds only, the zips are
 #    attached to the workflow run (no release)
@@ -11,9 +12,9 @@ on:
   workflow_dispatch:
 
 env:
-  PRODUCT: YourPluginName
-  ARTEFACTS: build/YourPluginName_artefacts/Release
-  # put into every zip next to the plugins (the manual, docs/manual/*.pdf, is added if it exists)
+  PACKAGE: NoiseMoments                      # name of the zips
+  PLUGINS: MomentNoise AmplitudeHistogram    # one folder per plugin, artefacts in build/<plugin>/<plugin>_artefacts
+  # put into every zip next to the plugins (the manuals, <plugin>/docs/manual/*.pdf, are added if they exist)
   DOCS: release/ReadMeFirst.txt LICENSE LICENSE-AGPL-3.0.txt
 
 jobs:
@@ -26,17 +27,19 @@ jobs:
         include:
           - name: Windows
             os: windows-latest
-            targets: YourPluginName_VST3 YourPluginName_Standalone
+            targets: MomentNoise_VST3 MomentNoise_Standalone AmplitudeHistogram_VST3 AmplitudeHistogram_Standalone
             cmake_args: ''
           - name: macOS
             os: macos-latest
-            targets: YourPluginName_VST3 YourPluginName_AU YourPluginName_Standalone
+            targets: >-
+              MomentNoise_VST3 MomentNoise_AU MomentNoise_Standalone
+              AmplitudeHistogram_VST3 AmplitudeHistogram_AU AmplitudeHistogram_Standalone
             # one Universal binary for Apple Silicon and Intel
             cmake_args: -DCMAKE_OSX_ARCHITECTURES="arm64;x86_64" -DCMAKE_OSX_DEPLOYMENT_TARGET=10.13
           - name: Linux
             # older Ubuntu = older glibc, so the binaries also run on older distributions
             os: ubuntu-22.04
-            targets: YourPluginName_VST3 YourPluginName_Standalone
+            targets: MomentNoise_VST3 MomentNoise_Standalone AmplitudeHistogram_VST3 AmplitudeHistogram_Standalone
             cmake_args: ''
 
     steps:
@@ -65,65 +68,84 @@ jobs:
       # Linux: in the job test-linux below (pluginval 2.x needs glibc 2.38, ubuntu-22.04 has 2.35)
       - name: Test with pluginval (macOS)
         if: runner.os == 'macOS'
-        run: tools/run_pluginval.sh "$ARTEFACTS/VST3/$PRODUCT.vst3" 1
+        run: |
+          for plugin in $PLUGINS; do
+            $plugin/tools/run_pluginval.sh "build/$plugin/${plugin}_artefacts/Release/VST3/$plugin.vst3" 1
+          done
 
       # auval: Apple's Audio Unit validation (what Logic/GarageBand check before loading an AU).
       # The AU codes (type, subtype, manufacturer) are read from the built component.
       - name: Test the AU with auval (macOS)
         if: runner.os == 'macOS'
         run: |
-          component="$ARTEFACTS/AU/$PRODUCT.component"
-          codes=""
-          for key in type subtype manufacturer; do
-            codes="$codes $(plutil -extract AudioComponents.0.$key raw "$component/Contents/Info.plist")"
-          done
-          echo "AU codes:$codes"
           mkdir -p ~/Library/Audio/Plug-Ins/Components
-          cp -R "$component" ~/Library/Audio/Plug-Ins/Components/
-          killall -9 AudioComponentRegistrar 2>/dev/null || true # make macOS find the new AU
-          auval -strict -v $codes | tee auval.log
-          grep -q "AU VALIDATION SUCCEEDED" auval.log
+          for plugin in $PLUGINS; do
+            cp -R "build/$plugin/${plugin}_artefacts/Release/AU/$plugin.component" ~/Library/Audio/Plug-Ins/Components/
+          done
+          killall -9 AudioComponentRegistrar 2>/dev/null || true # make macOS find the new AUs
+          for plugin in $PLUGINS; do
+            component=~/Library/Audio/Plug-Ins/Components/$plugin.component
+            codes=""
+            for key in type subtype manufacturer; do
+              codes="$codes $(plutil -extract AudioComponents.0.$key raw "$component/Contents/Info.plist")"
+            done
+            echo "$plugin AU codes:$codes"
+            auval -strict -v $codes | tee auval.log
+            grep -q "AU VALIDATION SUCCEEDED" auval.log
+          done
 
       - name: Test with pluginval (Windows)
         if: runner.os == 'Windows'
         shell: pwsh
-        run: tools/run_pluginval.ps1 "$env:ARTEFACTS/VST3/$env:PRODUCT.vst3" 1
+        run: |
+          foreach ($plugin in $env:PLUGINS.Split(' ')) {
+            & "$plugin/tools/run_pluginval.ps1" "build/$plugin/${plugin}_artefacts/Release/VST3/$plugin.vst3" 1
+            if ($LASTEXITCODE -ne 0) { exit 1 }
+          }
 
       - name: Package Windows
         if: runner.os == 'Windows'
         shell: bash
         run: |
-          mkdir -p dist/$PRODUCT
-          cp -r "$ARTEFACTS/VST3/$PRODUCT.vst3" dist/$PRODUCT/
-          cp "$ARTEFACTS/Standalone/$PRODUCT.exe" dist/$PRODUCT/
-          cp $DOCS dist/$PRODUCT/
-          cp docs/*.pdf docs/manual/*.pdf dist/$PRODUCT/ 2>/dev/null || true
-          cd dist && 7z a ../$PRODUCT-Windows.zip $PRODUCT
+          mkdir -p dist/$PACKAGE
+          for plugin in $PLUGINS; do
+            artefacts=build/$plugin/${plugin}_artefacts/Release
+            cp -r "$artefacts/VST3/$plugin.vst3" "$artefacts/Standalone/$plugin.exe" dist/$PACKAGE/
+            cp $plugin/docs/manual/*.pdf dist/$PACKAGE/ 2>/dev/null || true
+          done
+          cp $DOCS dist/$PACKAGE/
+          cd dist && 7z a ../$PACKAGE-Windows.zip $PACKAGE
 
       - name: Package macOS
         if: runner.os == 'macOS'
         run: |
-          mkdir -p dist/$PRODUCT
-          cp -R "$ARTEFACTS/VST3/$PRODUCT.vst3" "$ARTEFACTS/AU/$PRODUCT.component" "$ARTEFACTS/Standalone/$PRODUCT.app" dist/$PRODUCT/
+          mkdir -p dist/$PACKAGE
+          for plugin in $PLUGINS; do
+            artefacts=build/$plugin/${plugin}_artefacts/Release
+            cp -R "$artefacts/VST3/$plugin.vst3" "$artefacts/AU/$plugin.component" "$artefacts/Standalone/$plugin.app" dist/$PACKAGE/
+            cp $plugin/docs/manual/*.pdf dist/$PACKAGE/ 2>/dev/null || true
+          done
           # not signed with a Developer ID yet: ad-hoc signature, so the arm64 code is allowed to run at all
-          for bundle in dist/$PRODUCT/*.vst3 dist/$PRODUCT/*.component dist/$PRODUCT/*.app; do codesign --force --deep --sign - "$bundle"; done
-          cp $DOCS dist/$PRODUCT/
-          cp docs/*.pdf docs/manual/*.pdf dist/$PRODUCT/ 2>/dev/null || true
-          ditto -c -k --keepParent dist/$PRODUCT $PRODUCT-macOS.zip
+          for bundle in dist/$PACKAGE/*.vst3 dist/$PACKAGE/*.component dist/$PACKAGE/*.app; do codesign --force --deep --sign - "$bundle"; done
+          cp $DOCS dist/$PACKAGE/
+          ditto -c -k --keepParent dist/$PACKAGE $PACKAGE-macOS.zip
 
       - name: Package Linux
         if: runner.os == 'Linux'
         run: |
-          mkdir -p dist/$PRODUCT
-          cp -r "$ARTEFACTS/VST3/$PRODUCT.vst3" "$ARTEFACTS/Standalone/$PRODUCT" dist/$PRODUCT/
-          cp $DOCS dist/$PRODUCT/
-          cp docs/*.pdf docs/manual/*.pdf dist/$PRODUCT/ 2>/dev/null || true
-          cd dist && zip -r ../$PRODUCT-Linux.zip $PRODUCT
+          mkdir -p dist/$PACKAGE
+          for plugin in $PLUGINS; do
+            artefacts=build/$plugin/${plugin}_artefacts/Release
+            cp -r "$artefacts/VST3/$plugin.vst3" "$artefacts/Standalone/$plugin" dist/$PACKAGE/
+            cp $plugin/docs/manual/*.pdf dist/$PACKAGE/ 2>/dev/null || true
+          done
+          cp $DOCS dist/$PACKAGE/
+          cd dist && zip -r ../$PACKAGE-Linux.zip $PACKAGE
 
       - uses: actions/upload-artifact@v4
         with:
-          name: ${{ env.PRODUCT }}-${{ matrix.name }}
-          path: ${{ env.PRODUCT }}-${{ matrix.name }}.zip
+          name: ${{ env.PACKAGE }}-${{ matrix.name }}
+          path: ${{ env.PACKAGE }}-${{ matrix.name }}.zip
 
   # The Linux build runs on ubuntu-22.04 (old glibc: the plugin also runs on older distributions), but
   # pluginval 2.0.0-beta3 needs glibc 2.38: so the Linux zip is tested here, on a newer Ubuntu.
@@ -142,13 +164,15 @@ jobs:
 
       - uses: actions/download-artifact@v4
         with:
-          name: ${{ env.PRODUCT }}-Linux
+          name: ${{ env.PACKAGE }}-Linux
 
       - name: Test with pluginval
         run: |
           # into its own folder: the repository may have a source folder with the product name
-          unzip -q "$PRODUCT-Linux.zip" -d downloaded
-          xvfb-run -a tools/run_pluginval.sh "downloaded/$PRODUCT/$PRODUCT.vst3" 1
+          unzip -q "$PACKAGE-Linux.zip" -d downloaded
+          for plugin in $PLUGINS; do
+            xvfb-run -a $plugin/tools/run_pluginval.sh "downloaded/$PACKAGE/$plugin.vst3" 1
+          done
 
   release:
     name: Create release
@@ -160,11 +184,16 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Check that the tag matches the plugin version
+      - name: Check that the tag matches the versions (repository and both plugins)
         run: |
-          version=$(sed -n 's/^project(${TARGET_NAME} VERSION \([0-9.]*\)).*/\1/p' CMakeLists.txt)
+          version=$(sed -n 's/^project(NoiseMoments VERSION \([0-9.]*\)).*/\1/p' CMakeLists.txt)
           echo "tag ${GITHUB_REF_NAME}, CMakeLists version ${version}"
           test "${GITHUB_REF_NAME}" = "v${version}"
+          for plugin in $PLUGINS; do
+            pluginVersion=$(sed -n 's/^project(${TARGET_NAME} VERSION \([0-9.]*\)).*/\1/p' $plugin/CMakeLists.txt)
+            echo "$plugin version ${pluginVersion}"
+            test "${pluginVersion}" = "${version}"
+          done
 
       - uses: actions/download-artifact@v4
         with:
@@ -177,8 +206,9 @@ jobs:
         run: |
           cat > notes.md <<'EOF'
           Downloads for Windows, macOS (Universal: Apple Silicon and Intel) and Linux.
-          Each zip contains the VST3 plugin and the Standalone application (macOS also the AU plugin),
-          the manual, a ReadMeFirst.txt and the license files (source code: MIT; binaries: AGPLv3, because of JUCE).
+          Each zip contains both plugins, MomentNoise (noise with adjustable skewness and excess kurtosis)
+          and AmplitudeHistogram (histogram of the input amplitudes), as VST3 and Standalone application
+          (macOS also as AU), the manuals, a ReadMeFirst.txt and the license files (source code: MIT; binaries: AGPLv3, because of JUCE).
 
           **Installation:** copy the plugin into the standard folder of your system
           (Windows: `C:\Program Files\Common Files\VST3`, macOS: `~/Library/Audio/Plug-Ins/VST3` and
@@ -186,7 +216,7 @@ jobs:
 
           **macOS:** the binaries are not signed with an Apple Developer ID yet. If macOS says the
           plugin is damaged or cannot be opened, remove the quarantine flag in the Terminal, e.g.
-          `xattr -cr ~/Library/Audio/Plug-Ins/VST3/YourPluginName.vst3`.
+          `xattr -cr ~/Library/Audio/Plug-Ins/VST3/MomentNoise.vst3`.
           EOF
-          gh release create "$GITHUB_REF_NAME" zips/*.zip --title "$PRODUCT $GITHUB_REF_NAME" \
+          gh release create "$GITHUB_REF_NAME" zips/*.zip --title "$PACKAGE $GITHUB_REF_NAME" \
             --notes-file notes.md --generate-notes

@@ -1,31 +1,37 @@
-# CLAUDE.md -- instructions for Claude Code in a plugin made from the AdvancedAudioTemplate (AAT2)
+# CLAUDE.md -- instructions for Claude Code in noise_moments (two plugins made from the AdvancedAudioTemplate, AAT2)
 
 ## The project
-A JUCE audio plugin (VST3, AU on macOS, Standalone) made from the AdvancedAudioTemplate, branch AAT2.
-- `YourPluginName.h/.cpp`: the parameters (structs), the algorithm (`YourPluginNameAudio`, fixed-size
-  blocks via `SynchronBlockProcessor`) and the GUI (`YourPluginNameGUI`). Most work happens here.
+Two JUCE audio plugins (VST3, AU on macOS, Standalone), each in its own folder, each a full AAT2 template copy:
+- `MomentNoise/`: noise generator, skewness and excess kurtosis adjustable, pdf display (lower half).
+- `AmplitudeHistogram/`: histogram of the input amplitudes, statistics, normal pdf and Johnson fit as overlay.
+- `shared/`: code of both plugins -- `JohnsonDistribution.*` (design of the distribution, no JUCE),
+  `DistributionDesigner.h` (background thread for the design), `PdfPlot.*` (the display); `shared/tests/`.
+In each plugin folder (`<Plugin>` = MomentNoise or AmplitudeHistogram):
+- `<Plugin>.h/.cpp`: the parameters (structs), the algorithm (`<Plugin>Audio`, direct processing:
+  `g_desired_blocksize_ms` is 0, no latency) and the GUI (`<Plugin>GUI`). Most work happens here.
 - `PluginProcessor.*`, `PluginEditor.*`: glue code (presets, state, window, preset bar); change rarely.
 - `PluginSettings.h`: block size, GUI size, preset-bar and keyboard layout.
-- `tools/`: template helpers -- `ParameterSpec.h`, `DayNightLookAndFeel.*`, `PresetHandler.*`, `BypassDelay.h`,
-  `LogFrequencyRange.h`, `run_pluginval.*`, `tester/`.
-- `CMakeLists.txt`: version, plugin codes, switches `WITH_PRESETHANDLERGUI`, `WITH_DAYNIGHT` (needs the
-  preset handler), `WITH_MIDIKEYBOARD`, source list.
+- `tools/`: template helpers -- `ParameterSpec.h`, `SwitchParameter.h`, `DayNightLookAndFeel.*`, `PresetHandler.*`,
+  `BypassDelay.h`, `LogFrequencyRange.h`, `run_pluginval.*`, `with_virtual_display.sh`, `tester/`.
+- `CMakeLists.txt`: version, plugin codes, switches, source list (incl. `../shared/*.cpp`).
 - Docs: `README.md`, `HowToTestYourPlugin.md`, `docs/HowToDoc.md`, manual in `docs/manual/`.
+Top level: `CMakeLists.txt` (JUCE + both plugins + `NOISE_MOMENTS_BUILD_TESTS`), `README.md`,
+`release/ReadMeFirst.txt`, `.github/workflows/release.yml` (both plugins in one zip per system).
 
 ## Build
 ```console
 git submodule update --init                      # JUCE (pinned submodule), once
-cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug -DAAT_BUILD_TESTER=ON
-cmake --build build --target YourPluginName_VST3 YourPluginName_Standalone YourPluginName_Tester
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug -DAAT_BUILD_TESTER=ON -DNOISE_MOMENTS_BUILD_TESTS=ON
+cmake --build build --target MomentNoise_VST3 MomentNoise_Tester AmplitudeHistogram_VST3 AmplitudeHistogram_Tester JohnsonDistributionTest
+ctest --test-dir build
 ```
+Artefacts: `build/<Plugin>/<Plugin>_artefacts/<Config>/VST3/<Plugin>.vst3`, Tester: `build/<Plugin>/<Plugin>_Tester`.
 Develop with the Debug build (JUCE assertions are on); releases are Release builds made by CI.
 For the review in a DAW, build Release as well (a Debug build is slow there and stops at assertions):
 ```console
 cmake -S . -B build-release -DCMAKE_BUILD_TYPE=Release
-cmake --build build-release --target YourPluginName_VST3 YourPluginName_Standalone
+cmake --build build-release --target MomentNoise_VST3 AmplitudeHistogram_VST3
 ```
-Inside a bigger CMake project (e.g. AudioDev) this folder can also be added with `add_subdirectory`;
-then the parent's JUCE is used.
 
 ## Workflow rules (from the author, follow them)
 - Each new request gets a new git branch with a descriptive name (e.g. `feature/lowpass-filter`,
@@ -33,7 +39,7 @@ then the parent's JUCE is used.
 - Merge into main and push only when the user says so. Before merging, check the result
   (conflicts, conflict markers) before committing or continuing.
 - Release tags (`vX.Y.Z`) only on the user's explicit request -- a tag triggers a public release.
-- Versioning (`project(... VERSION X.Y.Z)` in CMakeLists.txt), once per logical change that gets
+- Versioning (`project(... VERSION X.Y.Z)` in the CMakeLists.txt of the changed plugin), once per logical change that gets
   committed: a new feature raises the second number and sets the third to 0 (1.0.3 -> 1.1.0); a fix or
   other change raises the third (1.1.0 -> 1.1.1). Documentation-only changes need no new version.
 - Update the documentation (README, manual, controls list) in the same change as the code.
@@ -43,13 +49,15 @@ then the parent's JUCE is used.
   `~/Library/Audio/Plug-Ins/VST3/` and the AU to `~/Library/Audio/Plug-Ins/Components/`; Windows:
   `C:\Program Files\Common Files\VST3\` (needs admin rights; otherwise tell the user the path of
   the built plugin). Install the build that was tested (run pluginval on the Release build too).
+- A change in `shared/` changes both plugins: raise both versions, test both. For a release, the
+  top-level version and both plugin versions must be the same (the workflow checks it).
 - Report results honestly: failed tests, skipped steps, things not tested (e.g. Windows/macOS).
 
 ## Testing without disturbing the author (the default)
 The author works on the same machine. Everything that opens a window runs in a **virtual display**, never on the real desktop:
-- pluginval: `tools/run_pluginval.sh ...` -- on Linux it starts itself under `xvfb-run -a` if xvfb is installed
+- pluginval: `<Plugin>/tools/run_pluginval.sh ...` -- on Linux it starts itself under `xvfb-run -a` if xvfb is installed
   (`AAT_REAL_DISPLAY=1` switches that off, only for a machine nobody works at);
-- Tester snapshots, the Standalone and any other GUI program: `tools/with_virtual_display.sh build/YourPluginName_Tester snapshot gui.png ...`
+- Tester snapshots, the Standalone and any other GUI program: `<Plugin>/tools/with_virtual_display.sh build/<Plugin>/<Plugin>_Tester snapshot gui.png ...`
   (it starts openbox inside the virtual display: JUCE's top-level windows end with an X error "BadAtom" on a bare Xvfb);
 - never move the mouse, click, type into other windows or take screenshots of the desktop (xdotool, XTest, `import -window root`,
   computer-use, browser automation) without asking first and getting a yes for that specific action. Tests that need mouse or key
@@ -60,11 +68,12 @@ The author works on the same machine. Everything that opens a window runs in a *
 
 ## Before every commit
 1. Build (Debug) without errors and warnings.
-2. `tools/run_pluginval.sh build/YourPluginName_artefacts/Debug/VST3/YourPluginName.vst3`
+2. `<Plugin>/tools/run_pluginval.sh build/<Plugin>/<Plugin>_artefacts/Debug/VST3/<Plugin>.vst3` (both plugins)
+   `ctest --test-dir build`
    -- all runs SUCCESS, zero JUCE assertions.
 3. If the sound should not change (refactoring): render before and after with
-   `YourPluginName_Tester render in.wav out.wav` and compare the files (identical = same sound).
-4. After GUI changes (in a virtual display, `xvfb-run -a`): look at `YourPluginName_Tester snapshot gui.png` (both themes, see below).
+   `<Plugin>_Tester render in.wav out.wav` and compare the files (identical = same sound).
+4. After GUI changes (in a virtual display, `xvfb-run -a`): look at `<Plugin>_Tester snapshot gui.png` (both themes, see below).
 
 ## Conventions
 - Readable code (code style of the author, binding): no one-liners, no magic numbers, no magic
@@ -75,7 +84,7 @@ The author works on the same machine. Everything that opens a window runs in a *
 - Headers include as little as possible: forward declare, include only what is used, no includes in
   headers just to pass them on.
 - Member variables `m_...`, constants `kName`.
-- Parameters: one struct per parameter in `YourPluginName.h` (ID, name, unit, range, default,
+- Parameters: one struct per parameter in `<Plugin>.h` (ID, name, unit, range, default,
   `numDecimalPlaces`, `logFrequency`, `help`); create it with `jade::makeParameter(spec)`; show
   `jade::helpText(spec)` as tooltip. Don't build `AudioParameterFloat`s by hand.
 - On/off parameters: not `juce::AudioParameterBool` (it keeps the raw value a host sends, so pluginval 2.x fails
@@ -109,7 +118,7 @@ The author works on the same machine. Everything that opens a window runs in a *
 
 ## Releases (CI)
 `.github/workflows/release.yml`: a tag `vX.Y.Z` that matches the version in CMakeLists.txt builds
-Windows, macOS (Universal, VST3 + AU) and Linux, tests with pluginval (and `auval` on macOS), and
+Windows, macOS (Universal, VST3 + AU) and Linux (both plugins), tests with pluginval (and `auval` on macOS), and
 creates the GitHub release with one zip per system (plugins, Standalone, `release/ReadMeFirst.txt`,
-licenses, `docs/manual/*.pdf`). Before a release: version raised, manual updated
-(`\pluginversion`, `controls.tex` via `YourPluginName_Tester --manual tex`), PDF rebuilt and committed.
+licenses, `<Plugin>/docs/manual/*.pdf`). Before a release: versions raised (top level and both plugins), manual updated
+(`\pluginversion`, `controls.tex` via `<Plugin>_Tester --manual tex`), PDF rebuilt and committed.

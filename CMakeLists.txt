@@ -26,3 +26,11 @@ endif()
 
 add_subdirectory(MomentNoise)
 add_subdirectory(AmplitudeHistogram)
+
+# test of the distribution design (no JUCE): cmake ... -DNOISE_MOMENTS_BUILD_TESTS=ON, then ctest
+option(NOISE_MOMENTS_BUILD_TESTS "Build the test of the Johnson distribution design" OFF)
+if(NOISE_MOMENTS_BUILD_TESTS)
+    enable_testing()
+    add_executable(JohnsonDistributionTest shared/tests/JohnsonDistributionTest.cpp shared/JohnsonDistribution.cpp)
+    add_test(NAME JohnsonDistributionTest COMMAND JohnsonDistributionTest)
+endif()
