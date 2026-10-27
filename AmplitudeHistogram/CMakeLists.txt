@@ -17,7 +17,7 @@ endif()
 
 set(TARGET_NAME AmplitudeHistogram)
 
-project(${TARGET_NAME} VERSION 0.0.4)
+project(${TARGET_NAME} VERSION 0.2.0)
 
 if(NOT TARGET juce::juce_core) # JUCE not added by a parent project: use the submodule
     if(NOT EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/JUCE/CMakeLists.txt")
@@ -62,11 +62,11 @@ juce_add_plugin(${TARGET_NAME}
     NEEDS_MIDI_OUTPUT FALSE              # Does the plugin need midi output?
     # IS_MIDI_EFFECT TRUE/FALSE                 # Is this plugin a MIDI effect?
     # EDITOR_WANTS_KEYBOARD_FOCUS TRUE/FALSE    # Does the editor need keyboard focus?
-    VST3_CATEGORIES "Fx" "EQ"                        
+    VST3_CATEGORIES "Fx" "Analyzer"
     AU_MAIN_TYPE "kAudioUnitType_Effect"
     COPY_PLUGIN_AFTER_BUILD FALSE               # Should the plugin be installed to a default location after building?
     PLUGIN_MANUFACTURER_CODE IHAJ               # A four-character manufacturer id with at least one upper-case character
-    PLUGIN_CODE tep1                            # A unique four-character plugin id with at least one upper-case character
+    PLUGIN_CODE aHi1                            # A unique four-character plugin id with at least one upper-case character
     FORMATS AU VST3 Standalone                  # The formats to build. Other valid formats are: AAX Unity VST AU AUv3
     PRODUCT_NAME "AmplitudeHistogram")     # The name of the final executable, which can differ from the target name
 #
@@ -94,6 +94,8 @@ target_sources(${TARGET_NAME}
         tools/MidiModPitchState.cpp
         tools/PresetHandler.cpp
         tools/SynchronBlockProcessor.cpp
+        ../shared/JohnsonDistribution.cpp
+        ../shared/PdfPlot.cpp
         )
 
 

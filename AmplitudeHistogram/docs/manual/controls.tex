@@ -2,6 +2,9 @@
 \hline
 Control & Range & Default & Description \\
 \hline
-Example & 1.0 xyz - 2.0 xyz & 1.2 xyz & An example parameter; replace it with your own. \\
+Length & 0.1 s - 10.0 s & 2.0 s & Analysis length: the histogram is made of the last samples of this duration (all channels). Longer = smoother histogram, but slower to follow changes. \\
+Bins & 10 - 400 & 120 & Number of bins from -6 to +6 sigma (120: bin width 0.1 sigma). More bins = finer, but each bin counts fewer samples (noisier). \\
+Overlay & None - Both & Both & Curves drawn over the histogram: the normal pdf and/or the Johnson pdf with the measured skewness and excess kurtosis. \\
+Log density & Off - On & Off & Density axis logarithmic (shows the tails) or linear. \\
 \hline
 \end{tabular}

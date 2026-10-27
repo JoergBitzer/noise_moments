@@ -55,13 +55,11 @@ juce::String helpText(const Spec& p)
          + valueText(p, p.maxValue) + ", default " + valueText(p, p.defaultValue) + "): " + juce::String(p.help);
 }
 
+// with a range of your own (e.g. jade::makeExponentialRange, tools/ExponentialRange.h); its start and
+// end must be the spec's minValue and maxValue
 template <class Spec>
-std::unique_ptr<juce::AudioParameterFloat> makeParameter(const Spec& p)
+std::unique_ptr<juce::AudioParameterFloat> makeParameter(const Spec& p, const juce::NormalisableRange<float>& range)
 {
-    const auto range = p.logFrequency
-        ? makeLogFrequencyRange(p.minValue, p.maxValue)
-        : juce::NormalisableRange<float>(p.minValue, p.maxValue, std::pow(10.0f, (float) -p.numDecimalPlaces));
-
     parameterHelpTexts()[juce::String(p.ID)] = juce::String(p.help);
 
     // the unit is part of the text (not a separate label, which some DAWs would show twice)
@@ -70,5 +68,14 @@ std::unique_ptr<juce::AudioParameterFloat> makeParameter(const Spec& p)
         juce::AudioParameterFloatAttributes()
             .withStringFromValueFunction([p](float value, int) { return valueText(p, value); })
             .withValueFromStringFunction([](const juce::String& text) { return text.getFloatValue(); }));
+}
+
+template <class Spec>
+std::unique_ptr<juce::AudioParameterFloat> makeParameter(const Spec& p)
+{
+    const auto range = p.logFrequency
+        ? makeLogFrequencyRange(p.minValue, p.maxValue)
+        : juce::NormalisableRange<float>(p.minValue, p.maxValue, std::pow(10.0f, (float) -p.numDecimalPlaces));
+    return makeParameter(p, range);
 }
 } // namespace jade

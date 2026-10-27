@@ -2,6 +2,9 @@
 \hline
 Control & Range & Default & Description \\
 \hline
-Example & 1.0 xyz - 2.0 xyz & 1.2 xyz & An example parameter; replace it with your own. \\
+Skewness & -2.00 - 2.00 & 0.00 & Asymmetry of the amplitude distribution (3rd standardized moment): 0 = symmetric, positive = long tail towards positive amplitudes. \\
+Excess kurtosis & -1.50 - 100.00 & 0.00 & Tail weight (4th standardized moment minus 3): 0 = Gaussian, negative = light tails (uniform: -1.2), positive = heavy tails, rare large peaks (Laplace: 3). At least skewness squared - 1.5, smaller values are raised. \\
+Level & -60.0 dBFS - 0.0 dBFS & -24.0 dBFS & RMS level of the noise (its standard deviation). Heavy tails give peaks far above the RMS level: they may exceed 0 dBFS. \\
+Log density & Off - On & Off & Density axis of the display logarithmic (shows the tails) or linear. \\
 \hline
 \end{tabular}
