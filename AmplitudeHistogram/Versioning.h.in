@@ -1,0 +1,5 @@
+#pragma once
+// Macros for CMAKE
+#define PLUGIN_VERSION_MAJOR @AmplitudeHistogram_VERSION_MAJOR@
+#define PLUGIN_VERSION_MINOR @AmplitudeHistogram_VERSION_MINOR@
+#define PLUGIN_VERSION_PATCH @AmplitudeHistogram_VERSION_PATCH@

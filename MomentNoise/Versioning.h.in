@@ -1,0 +1,5 @@
+#pragma once
+// Macros for CMAKE
+#define PLUGIN_VERSION_MAJOR @MomentNoise_VERSION_MAJOR@
+#define PLUGIN_VERSION_MINOR @MomentNoise_VERSION_MINOR@
+#define PLUGIN_VERSION_PATCH @MomentNoise_VERSION_PATCH@
