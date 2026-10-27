@@ -13,7 +13,7 @@
 
 cmake_minimum_required(VERSION 3.22)
 
-project(NoiseMoments VERSION 0.1.0)
+project(NoiseMoments VERSION 0.2.0)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_POSITION_INDEPENDENT_CODE ON) # needed on Linux for binary data (e.g. factory presets)
 

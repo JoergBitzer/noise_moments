@@ -3,6 +3,7 @@
 
 #include "PluginProcessor.h"
 #include "tools/SwitchParameter.h"
+#include "tools/ExponentialRange.h"
 
 namespace
 {
@@ -83,7 +84,9 @@ void MomentNoiseAudio::addParameter(std::vector<std::unique_ptr<juce::RangedAudi
 {
     // one line per parameter, made from its definition in MomentNoise.h (see tools/ParameterSpec.h)
     paramVector.push_back(jade::makeParameter(g_paramSkewness));
-    paramVector.push_back(jade::makeParameter(g_paramExcessKurtosis));
+    paramVector.push_back(jade::makeParameter(g_paramExcessKurtosis,
+        jade::makeExponentialRange(g_paramExcessKurtosis.minValue, g_paramExcessKurtosis.maxValue,
+                                   g_paramExcessKurtosis.knobCentreValue, g_paramExcessKurtosis.numDecimalPlaces)));
     paramVector.push_back(jade::makeParameter(g_paramLevel));
     paramVector.push_back(jade::makeSwitchParameter(g_paramLogDensity.ID, g_paramLogDensity.name, g_paramLogDensity.defaultIsOn));
     jade::parameterHelpTexts()[juce::String(g_paramLogDensity.ID)] = juce::String(g_paramLogDensity.help);

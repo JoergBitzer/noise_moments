@@ -11,7 +11,8 @@ In each plugin folder (`<Plugin>` = MomentNoise or AmplitudeHistogram):
   `g_desired_blocksize_ms` is 0, no latency) and the GUI (`<Plugin>GUI`). Most work happens here.
 - `PluginProcessor.*`, `PluginEditor.*`: glue code (presets, state, window, preset bar); change rarely.
 - `PluginSettings.h`: block size, GUI size, preset-bar and keyboard layout.
-- `tools/`: template helpers -- `ParameterSpec.h`, `SwitchParameter.h`, `DayNightLookAndFeel.*`, `PresetHandler.*`,
+- `tools/`: template helpers -- `ParameterSpec.h` (MomentNoise: plus an overload with a range of your own),
+  `ExponentialRange.h` (MomentNoise only), `SwitchParameter.h`, `DayNightLookAndFeel.*`, `PresetHandler.*`,
   `BypassDelay.h`, `LogFrequencyRange.h`, `run_pluginval.*`, `with_virtual_display.sh`, `tester/`.
 - `CMakeLists.txt`: version, plugin codes, switches, source list (incl. `../shared/*.cpp`).
 - Docs: `README.md`, `HowToTestYourPlugin.md`, `docs/HowToDoc.md`, manual in `docs/manual/`.

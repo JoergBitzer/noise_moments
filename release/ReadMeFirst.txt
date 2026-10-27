@@ -43,7 +43,8 @@ Done! Start your DAW and let it rescan the plugins.
 The Standalone applications run without a DAW.
 
 Warning: heavy-tailed noise (large excess kurtosis) has rare peaks far above its RMS level
-(up to about +5 dBFS at the default level of -24 dBFS). Lower the level before you listen.
+(at the default level of -24 dBFS and the largest excess kurtosis, 100: up to about +15 dBFS).
+Lower the level before you listen.
 
 Have fun!
 

@@ -37,10 +37,11 @@ const struct
 	const std::string name = "Excess kurtosis";
 	const std::string unitName = "";
 	const float minValue = -1.5f;
-	const float maxValue = 15.f;
+	const float maxValue = 100.f;
 	const float defaultValue = 0.f;
 	const int numDecimalPlaces = 2;
 	const bool logFrequency = false;
+	const float knobCentreValue = 3.f;  // exponential knob range (tools/ExponentialRange.h): 3 in the middle
 	const std::string help = "Tail weight (4th standardized moment minus 3): 0 = Gaussian, negative = light tails "
 	                         "(uniform: -1.2), positive = heavy tails, rare large peaks (Laplace: 3). "
 	                         "At least skewness squared - 1.5, smaller values are raised.";
