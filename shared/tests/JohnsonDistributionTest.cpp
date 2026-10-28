@@ -29,7 +29,10 @@ constexpr double kDerivativeStep = 1e-5;
 constexpr double kConsistencyTolerance = 1e-4; // relative
 constexpr double kSampleSkewnessTolerance = 0.05; // sample estimates: rough check only
 constexpr double kSampleSkewnessPerKurtosis = 0.02; // heavy tails: the estimate scatters more
-constexpr double kSmoothDelta = 0.5;   // SB with delta above this: pdf smooth enough for the sum over x
+constexpr double kSmoothDelta = 0.5;
+// above this excess kurtosis, the moments of 2 million samples and of the pdf summed over +-200 sigma fall
+// clearly short (the 4th moment comes from extremely rare values): only the design and the pdf are checked
+constexpr double kMaxCheckableExcess = 15.0;   // SB with delta above this: pdf smooth enough for the sum over x
 constexpr double kSampleKurtosisRelTolerance = 0.15;
 
 struct Estimate
@@ -112,8 +115,9 @@ Estimate momentsOfSamples(const jade::JohnsonDistribution& d)
 
 int main()
 {
-    const double skewnessValues[] = { -2.0, -1.0, -0.3, 0.0, 0.01, 0.5, 1.0, 1.5, 2.0 };
-    const double excessValues[] = { -1.8, -1.5, -1.2, -0.5, 0.0, 0.01, 0.5, 1.0, 3.0, 6.0, 10.0, 15.0 };
+    // tiny values like +-1.2e-7: what a host's round trip of a parameter can make of 0 (gave NaN on macOS)
+    const double skewnessValues[] = { -2.0, -1.0, -0.3, -1e-7, 0.0, 1e-7, 2e-4, 0.01, 0.5, 1.0, 1.5, 2.0 };
+    const double excessValues[] = { -1.8, -1.5, -1.2, -0.5, -1.2e-7, 0.0, 1.2e-7, 0.01, 0.5, 1.0, 3.0, 6.0, 10.0, 15.0, 50.0, 100.0 };
     int failures = 0;
     double longestMs = 0.0;
     for (double s : skewnessValues)
@@ -130,7 +134,7 @@ int main()
             {
                 wantedExcess = jade::smallestDesignableExcessKurtosis(s);
             }
-            bool ok = std::abs(d.skewness - s) < kMomentTolerance && std::abs(d.excessKurtosis - wantedExcess) < kMomentTolerance;
+            bool ok = d.isFinite() && std::abs(d.skewness - s) < kMomentTolerance && std::abs(d.excessKurtosis - wantedExcess) < kMomentTolerance;
             const bool smooth = d.family != jade::JohnsonFamily::Bounded || d.delta > kSmoothDelta;
             const double consistency = pdfConsistencyError(d);
             const Estimate pdfMoments = momentsOfPdf(d);
@@ -138,10 +142,11 @@ int main()
                  && std::abs(pdfMoments.variance - 1.0) < kMomentTolerance
                  && std::abs(pdfMoments.skewness - s) < kMomentTolerance
                  && std::abs(pdfMoments.excess - wantedExcess) < 10.0 * kMomentTolerance;
-            ok = ok && (pdfOk || !smooth);
+            const bool checkable = wantedExcess <= kMaxCheckableExcess;
+            ok = ok && ((pdfOk || !smooth) || (!checkable && consistency < kConsistencyTolerance));
             const Estimate sampleMoments = momentsOfSamples(d);
-            ok = ok && std::abs(sampleMoments.skewness - s) < kSampleSkewnessTolerance + kSampleSkewnessPerKurtosis * std::abs(wantedExcess)
-                 && std::abs(sampleMoments.excess - wantedExcess) < 0.1 + kSampleKurtosisRelTolerance * std::abs(wantedExcess);
+            ok = ok && (!checkable || std::abs(sampleMoments.skewness - s) < kSampleSkewnessTolerance + kSampleSkewnessPerKurtosis * std::abs(wantedExcess)
+                 && std::abs(sampleMoments.excess - wantedExcess) < 0.1 + kSampleKurtosisRelTolerance * std::abs(wantedExcess));
             if (!ok)
             {
                 ++failures;

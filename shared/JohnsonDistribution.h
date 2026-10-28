@@ -51,6 +51,8 @@ struct JohnsonDistribution
     double transform(double z) const;
     // probability density at x
     double pdf(double x) const;
+    // all parameters finite and usable (designJohnsonDistribution() returns only such designs)
+    bool isFinite() const;
 };
 
 // the theoretical bound: every distribution has an excess kurtosis > skewness^2 - 2

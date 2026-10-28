@@ -21,9 +21,13 @@ constexpr double kBoundMargin = 0.5;
 constexpr double kMinDeltaUnbounded = 0.3;
 constexpr double kMinDeltaBounded = 0.05;
 constexpr double kMaxDelta = 60.0; // only for skewness 0: delta = 60 is practically normal
-// a target this close to the lognormal line (or to 0/0) is taken as lognormal (or normal)
+// a target this close to the lognormal line is taken as lognormal
 constexpr double kLognormalTolerance = 1e-4;
-constexpr double kNormalTolerance = 1e-9;
+// a skewness or excess kurtosis this small is taken as 0 (far below the parameter step of 0.01).
+// Without this, tiny values (e.g. 1e-7 after a host round trip of the parameter) lead to a lognormal
+// with omega - 1 = skewness^2 / 9 below double precision: the result then depends on the rounding
+// of the platform's cbrt/log and can be infinite or NaN (it was NaN on macOS).
+constexpr double kZeroMoment = 1e-4;
 
 // quadrature over z (trapezoidal rule, very accurate for the Gaussian weight)
 constexpr double kBaseRangeZ = 8.5;    // |z| < 8.5 covers all but 1e-17 of the probability
@@ -45,6 +49,11 @@ struct Moments
     double skewness = 0.0;
     double excessKurtosis = 0.0;
 };
+
+bool isZero(double value)
+{
+    return std::fpclassify(value) == FP_ZERO;
+}
 
 double standardNormalPdf(double z)
 {
@@ -270,11 +279,104 @@ JohnsonDistribution standardized(JohnsonFamily family, double delta, double shap
     }
     return d;
 }
+// the design without the checks of designJohnsonDistribution()
+JohnsonDistribution designUnchecked(double skewness, double excessKurtosis)
+{
+    const bool mirrored = skewness < 0.0;
+    const double s = std::abs(skewness);
+    bool limited = false;
+    double k = excessKurtosis;
+    if (k < smallestDesignableExcessKurtosis(s))
+    {
+        k = smallestDesignableExcessKurtosis(s);
+        limited = true;
+    }
+
+    if (isZero(s) && isZero(k))
+    {
+        JohnsonDistribution normal;
+        normal.limited = limited;
+        return normal;
+    }
+
+    const double omega = lognormalOmega(s);
+    const double kLognormal = lognormalExcessKurtosisOfOmega(omega);
+    if (s > 0.0 && std::abs(k - kLognormal) < kLognormalTolerance)
+    {
+        JohnsonDistribution d = standardized(JohnsonFamily::Lognormal, deltaOfOmega(omega), 0.0, mirrored);
+        d.limited = limited;
+        return d;
+    }
+
+    JohnsonFamily family = JohnsonFamily::Bounded;
+    double minDelta = kMinDeltaBounded;
+    if (k > kLognormal)
+    {
+        family = JohnsonFamily::Unbounded;
+        minDelta = kMinDeltaUnbounded;
+    }
+
+    // the largest delta: there the matching shape is the lognormal one (excess = kLognormal)
+    double maxDelta = kMaxDelta;
+    double errorAtMaxDelta = 0.0;
+    if (s > 0.0)
+    {
+        maxDelta = deltaOfOmega(omega);
+        errorAtMaxDelta = kLognormal - k;
+    }
+    else
+    {
+        errorAtMaxDelta = computeMoments(family, maxDelta, shapeOfPosition(family, 0.0)).excessKurtosis - k;
+    }
+
+    // searched over log(delta): for a small skewness, maxDelta is huge (about 3/skewness), and the
+    // kurtosis changes over many decades of delta (a linear search does not converge there)
+    auto kurtosisError = [family, s, k](double logDelta)
+    {
+        const double delta = std::exp(logDelta);
+        const double shape = shapeForSkewness(family, delta, s);
+        return computeMoments(family, delta, shape).excessKurtosis - k;
+    };
+    const double errorAtMinDelta = kurtosisError(std::log(minDelta));
+
+    double delta = minDelta;
+    if ((errorAtMinDelta > 0.0) == (errorAtMaxDelta > 0.0))
+    {
+        // the target lies beyond what this family reaches in the search range: take the edge
+        limited = true;
+        if (std::abs(errorAtMaxDelta) < std::abs(errorAtMinDelta))
+        {
+            delta = maxDelta;
+            if (s > 0.0)
+            {
+                // the matching shape at this delta is the lognormal limit itself
+                JohnsonDistribution d = standardized(JohnsonFamily::Lognormal, maxDelta, 0.0, mirrored);
+                d.limited = limited;
+                return d;
+            }
+        }
+    }
+    else
+    {
+        delta = std::exp(findRoot(kurtosisError, std::log(minDelta), std::log(maxDelta), errorAtMinDelta, errorAtMaxDelta,
+                                  kKurtosisTolerance));
+    }
+    const double shape = shapeForSkewness(family, delta, s);
+    JohnsonDistribution d = standardized(family, delta, shape, mirrored);
+    d.limited = limited;
+    return d;
+}
 } // namespace
 
 double JohnsonDistribution::transform(double z) const
 {
     return offset + scale * unitTransform(family, delta, shape, z);
+}
+
+bool JohnsonDistribution::isFinite() const
+{
+    return std::isfinite(delta) && std::isfinite(shape) && std::isfinite(offset) && std::isfinite(scale) && !isZero(scale)
+           && std::isfinite(transform(0.0));
 }
 
 double JohnsonDistribution::pdf(double x) const
@@ -316,84 +418,24 @@ const char* familyName(JohnsonFamily family)
 
 JohnsonDistribution designJohnsonDistribution(double skewness, double excessKurtosis)
 {
-    const bool mirrored = skewness < 0.0;
-    const double s = std::abs(skewness);
-    bool limited = false;
+    double s = skewness;
+    if (std::abs(s) < kZeroMoment)
+    {
+        s = 0.0;
+    }
     double k = excessKurtosis;
-    if (k < smallestDesignableExcessKurtosis(s))
+    if (std::abs(k) < kZeroMoment)
     {
-        k = smallestDesignableExcessKurtosis(s);
-        limited = true;
+        k = 0.0;
     }
-
-    if (s < kNormalTolerance && std::abs(k) < kNormalTolerance)
+    const JohnsonDistribution d = designUnchecked(s, k);
+    if (d.isFinite())
     {
-        JohnsonDistribution normal;
-        normal.limited = limited;
-        return normal;
-    }
-
-    const double omega = lognormalOmega(s);
-    const double kLognormal = lognormalExcessKurtosisOfOmega(omega);
-    if (s > 0.0 && std::abs(k - kLognormal) < kLognormalTolerance)
-    {
-        JohnsonDistribution d = standardized(JohnsonFamily::Lognormal, deltaOfOmega(omega), 0.0, mirrored);
-        d.limited = limited;
         return d;
     }
-
-    JohnsonFamily family = JohnsonFamily::Bounded;
-    double minDelta = kMinDeltaBounded;
-    if (k > kLognormal)
-    {
-        family = JohnsonFamily::Unbounded;
-        minDelta = kMinDeltaUnbounded;
-    }
-
-    // the largest delta: there the matching shape is the lognormal one (excess = kLognormal)
-    double maxDelta = kMaxDelta;
-    double errorAtMaxDelta = 0.0;
-    if (s > 0.0)
-    {
-        maxDelta = deltaOfOmega(omega);
-        errorAtMaxDelta = kLognormal - k;
-    }
-    else
-    {
-        errorAtMaxDelta = computeMoments(family, maxDelta, shapeOfPosition(family, 0.0)).excessKurtosis - k;
-    }
-
-    auto kurtosisError = [family, s, k](double delta)
-    {
-        const double shape = shapeForSkewness(family, delta, s);
-        return computeMoments(family, delta, shape).excessKurtosis - k;
-    };
-    const double errorAtMinDelta = kurtosisError(minDelta);
-
-    double delta = minDelta;
-    if ((errorAtMinDelta > 0.0) == (errorAtMaxDelta > 0.0))
-    {
-        // the target lies beyond what this family reaches in the search range: take the edge
-        limited = true;
-        if (std::abs(errorAtMaxDelta) < std::abs(errorAtMinDelta))
-        {
-            delta = maxDelta;
-            if (s > 0.0)
-            {
-                // the matching shape at this delta is the lognormal limit itself
-                JohnsonDistribution d = standardized(JohnsonFamily::Lognormal, maxDelta, 0.0, mirrored);
-                d.limited = limited;
-                return d;
-            }
-        }
-    }
-    else
-    {
-        delta = findRoot(kurtosisError, minDelta, maxDelta, errorAtMinDelta, errorAtMaxDelta, kKurtosisTolerance);
-    }
-    const double shape = shapeForSkewness(family, delta, s);
-    JohnsonDistribution d = standardized(family, delta, shape, mirrored);
-    d.limited = limited;
-    return d;
+    // should never happen; but noise made of NaNs must not reach the output
+    JohnsonDistribution normal;
+    normal.limited = true;
+    return normal;
 }
 } // namespace jade

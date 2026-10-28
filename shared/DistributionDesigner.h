@@ -107,6 +107,7 @@ private:
             return;
         }
         const JohnsonDistribution design = designJohnsonDistribution(skewness, excessKurtosis);
+        jassert(design.isFinite());
 
         const juce::SpinLock::ScopedLockType publishLock(m_publishLock);
         m_design = design;

@@ -37,7 +37,11 @@ void MomentNoiseAudio::prepareToPlay(double sampleRate, int max_samplesPerBlock,
     // the first block must already have the right distribution: design it here (not realtime)
     updateDesignTarget();
     m_designer.designNow();
-    m_distribution = m_designer.getDesign();
+    const jade::JohnsonDistribution design = m_designer.getDesign();
+    if (design.isFinite())
+    {
+        m_distribution = design;
+    }
     m_distributionVersion = m_designer.getVersion();
 
     m_gain.reset(sampleRate, kLevelSmoothingSeconds);
@@ -60,8 +64,15 @@ int MomentNoiseAudio::processSynchronBlock(juce::AudioBuffer<float> & buffer, ju
     updateDesignTarget();
     if (m_designer.getVersion() != m_distributionVersion)
     {
-        // if the designer is just publishing, the next block takes the new design
-        m_designer.tryGetDesign(m_distribution, m_distributionVersion);
+        // if the designer is just publishing, the next block takes the new design;
+        // a design that is not finite is never taken (it would give NaNs)
+        jade::JohnsonDistribution design;
+        int version = 0;
+        if (m_designer.tryGetDesign(design, version) && design.isFinite())
+        {
+            m_distribution = design;
+            m_distributionVersion = version;
+        }
     }
     m_gain.setTargetValue(juce::Decibels::decibelsToGain(m_levelParam->load()));
 
