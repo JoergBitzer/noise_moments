@@ -10,7 +10,7 @@
     (a power law, which crams the low end into a sliver), small values keep a usable share of the
     knob while the range still reaches far up. Example: -1.5 ... 100 with centre 3 puts 0 at 34 %,
     10 at 65 % and 25 at 78 % of the knob. centreValue must lie below the middle of the range.
-    Values snap to numDecimalPlaces.
+    Values snap to numDecimalPlaces (also in the conversion from 0...1: the host's values are exact steps).
 
     Usage:
         jade::makeParameter(g_paramX, jade::makeExponentialRange(-1.5f, 100.0f, 3.0f, 2))
@@ -36,11 +36,14 @@ inline juce::NormalisableRange<float> makeExponentialRange(float minValue, float
     const double step = std::pow(10.0, -numDecimalPlaces);
 
     return juce::NormalisableRange<float>(minValue, maxValue,
-        [a, expA](float rangeStart, float rangeEnd, float normalised) // convertFrom0To1
+        [a, expA, step](float rangeStart, float rangeEnd, float normalised) // convertFrom0To1, snapped
         {
+            // snapped here: juce::AudioParameterFloat::setValue does not snap, so a host's round trip
+            // of the default 0 would give 1.2e-7 instead of 0
             const double u = juce::jlimit(0.0, 1.0, static_cast<double>(normalised));
             const double value = rangeStart + (rangeEnd - rangeStart) * (std::exp(a * u) - 1.0) / (expA - 1.0);
-            return juce::jlimit(rangeStart, rangeEnd, static_cast<float>(value));
+            const double snapped = std::round(value / step) * step;
+            return juce::jlimit(rangeStart, rangeEnd, static_cast<float>(snapped));
         },
         [a, expA](float rangeStart, float rangeEnd, float value) // convertTo0To1
         {
