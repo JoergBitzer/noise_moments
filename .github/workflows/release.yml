@@ -9,7 +9,6 @@ name: Build and release
 on:
   push:
     tags: ['v*.*.*']
-    branches: [fix/macos-nan] # TEMPORARY: test the fix on all systems, removed before merging
   workflow_dispatch:
 
 env:
